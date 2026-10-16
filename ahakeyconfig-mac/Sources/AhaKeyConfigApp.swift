@@ -66,6 +66,22 @@ struct AhaKeyConfigApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    private var legacyStatusItem: NSStatusItem?
+
+    private func installLegacyStatusMenuIfNeeded() {
+        if #available(macOS 13.0, *) { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "AhaKey")
+        let menu = NSMenu()
+        let openItem = menu.addItem(withTitle: NSLocalizedString("打开主窗口", comment: ""), action: #selector(reopenMainWindow), keyEquivalent: "")
+        openItem.target = self
+        menu.addItem(.separator())
+        let quitItem = menu.addItem(withTitle: NSLocalizedString("退出 AhaKey Studio", comment: ""), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        quitItem.target = NSApp
+        item.menu = menu
+        legacyStatusItem = item
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard FirmwareFlashActivity.shared.preventsApplicationTermination else {
             return .terminateNow
@@ -119,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             }
         }
 
+        installLegacyStatusMenuIfNeeded()
         UNUserNotificationCenter.current().delegate = self
 
         VoiceRelayService.shared.start()
@@ -145,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         return true
     }
 
-    func reopenMainWindow() {
+    @objc func reopenMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
         if let mainWindow = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isMiniaturized }) {
             mainWindow.makeKeyAndOrderFront(nil)
