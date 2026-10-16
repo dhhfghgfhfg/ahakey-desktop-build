@@ -132,7 +132,7 @@ public extension DynamicNotchInfo {
                         Circle()
                             .trim(from: 0, to: isLoaded ? target : 0)
                             .stroke(
-                                color.gradient,
+                                LinearGradient(colors: [color.opacity(0.7), color], startPoint: .top, endPoint: .bottom),
                                 style: StrokeStyle(
                                     lineWidth: thickness,
                                     lineCap: .round

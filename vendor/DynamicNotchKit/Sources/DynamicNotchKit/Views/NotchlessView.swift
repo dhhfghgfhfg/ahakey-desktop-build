@@ -35,7 +35,7 @@ struct NotchlessView<Expanded, CompactLeading, CompactTrailing>: View where Expa
             }
             .clipShape(.rect(cornerRadius: cornerRadius))
             .padding(20)
-            .onGeometryChange(for: CGFloat.self, of: \.size.height) { newHeight in
+            .onCompatGeometryChange(for: CGFloat.self, of: \.size.height) { newHeight in
                 // This makes sure that the floating window FULLY slides off before disappearing
                 windowHeight = newHeight
             }
