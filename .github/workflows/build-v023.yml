@@ -1,0 +1,68 @@
+name: Build v0.2.3 macOS test DMG
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1b8882a5c7f546e60a1b868c16edbab46104184f
+          fetch-depth: 0
+      - name: Test app and Agent
+        working-directory: ahakeyconfig-mac
+        run: swift test --skip-update
+      - name: Test VibeBar
+        working-directory: vibebar
+        run: swift test --skip-update
+      - name: Build complete universal app
+        working-directory: ahakeyconfig-mac
+        env:
+          APP_VERSION: 0.2.3
+          MACOS_DEPLOYMENT_TARGET: '13.0'
+          BUILD_ARCHS: arm64 x86_64
+          INSTALL_TO_APPLICATIONS: '0'
+          REQUIRE_DEVELOPER_ID: '0'
+        run: zsh scripts/build.sh
+      - name: Verify version, architectures and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          app='ahakeyconfig-mac/dist/AhaKey Studio.app'
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = '0.2.3'
+          test "$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$app/Contents/Info.plist")" = '13.0'
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/AhaKeyConfig"
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/ahakeyconfig-agent"
+          codesign --verify --deep --strict --verbose=2 "$app"
+      - name: Package test DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v023-staging" deliverables
+          ditto 'ahakeyconfig-mac/dist/AhaKey Studio.app' "$RUNNER_TEMP/v023-staging/AhaKey Studio.app"
+          ln -s /Applications "$RUNNER_TEMP/v023-staging/Applications"
+          hdiutil create -volname 'AhaKey Studio 0.2.3 Test' -srcfolder "$RUNNER_TEMP/v023-staging" -ov -format UDZO deliverables/AhaKey-Studio-macOS-v0.2.3-test-universal.dmg
+          hdiutil verify deliverables/AhaKey-Studio-macOS-v0.2.3-test-universal.dmg
+          python3 - <<'PY'
+          import json, pathlib
+          pathlib.Path('deliverables/build-info.json').write_text(json.dumps({
+              'version':'0.2.3',
+              'source_repository':'AhakeyAI/desktop',
+              'source_commit':'1b8882a5c7f546e60a1b868c16edbab46104184f',
+              'architectures':['arm64','x86_64'],
+              'minimum_macos':'13.0',
+              'includes':['AhaKeyConfig','ahakeyconfig-agent','resources'],
+              'signing':'ad-hoc',
+              'notarized':False
+          }, indent=2)+'\n')
+          PY
+          cd deliverables
+          shasum -a 256 AhaKey-Studio-macOS-v0.2.3-test-universal.dmg > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AhaKey-Studio-v0.2.3-test-universal
+          path: deliverables/*
+          if-no-files-found: error
