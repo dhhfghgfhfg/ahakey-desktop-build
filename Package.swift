@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "AhaKeyConfig",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v12)
     ],
     products: [
         .executable(name: "AhaKeyConfig", targets: ["AhaKeyConfig"]),

@@ -1,0 +1,8 @@
+{
+  "base": "0ddab17fc8128d4090a5f1963354be666771f6f3",
+  "repo": "AhakeyAI/desktop",
+  "edition": "Public macOS community source with VibeBar",
+  "website_binary_source_match": "not established",
+  "target": "macOS 12.7.6 Intel",
+  "version": "0.2.3 + main as of 2026-10-26"
+}

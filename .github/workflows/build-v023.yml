@@ -1,0 +1,74 @@
+name: Build macOS 12 Intel community compatibility package
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '12.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test macOS app, shared code and Agent
+        working-directory: ahakeyconfig-mac
+        run: swift test --skip-update
+      - name: Test VibeBar
+        working-directory: vibebar
+        run: swift test --skip-update
+      - name: Build Intel community app for macOS 12
+        working-directory: ahakeyconfig-mac
+        env:
+          APP_VERSION: 0.2.3
+          APP_BUNDLE_NAME: AhaKey Studio Community
+          APP_DISPLAY_NAME: AhaKey Studio Community
+          MACOS_DEPLOYMENT_TARGET: '12.0'
+          BUILD_ARCHS: x86_64
+          INSTALL_TO_APPLICATIONS: '0'
+          REQUIRE_DEVELOPER_ID: '0'
+        run: zsh scripts/build.sh
+      - name: Audit minimum OS versions and signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deliverables
+          app='ahakeyconfig-mac/dist/AhaKey Studio Community.app'
+          python3 build-support/macos12/audit_macho.py "$app" deliverables/macos12-binary-audit.json
+          codesign --verify --deep --strict --verbose=2 "$app"
+      - name: Package DMG and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          app='ahakeyconfig-mac/dist/AhaKey Studio Community.app'
+          mkdir -p "$RUNNER_TEMP/community-macos12"
+          ditto "$app" "$RUNNER_TEMP/community-macos12/AhaKey Studio Community.app"
+          ln -s /Applications "$RUNNER_TEMP/community-macos12/Applications"
+          cp build-support/macos12/README-zh.md deliverables/README-zh.md
+          cp build-support/macos12/README-zh.md "$RUNNER_TEMP/community-macos12/安装说明.md"
+          hdiutil create -volname 'AhaKey Community macOS12 Intel' -srcfolder "$RUNNER_TEMP/community-macos12" -ov -format UDZO deliverables/AhaKey-Community-macOS12-Intel-20261026.dmg
+          hdiutil verify deliverables/AhaKey-Community-macOS12-Intel-20261026.dmg
+          ditto -c -k --sequesterRsrc --keepParent "$app" deliverables/AhaKey-Community-macOS12-Intel-20261026.zip
+          python3 - <<'PY'
+          import json,pathlib,subprocess
+          provenance=json.loads(pathlib.Path('build-support/macos12/source-info.json').read_text())
+          provenance.update({
+            'compatibility_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+            'architectures':['x86_64'],
+            'minimum_macos':'12.0',
+            'runtime_test_host':subprocess.check_output(['sw_vers','-productVersion'],text=True).strip(),
+            'macos12_runtime_tested':False,
+            'signing':'ad-hoc',
+            'notarized':False
+          })
+          pathlib.Path('deliverables/build-info.json').write_text(json.dumps(provenance,ensure_ascii=False,indent=2)+'\n')
+          PY
+          cd deliverables
+          shasum -a 256 AhaKey-Community-macOS12-Intel-20261026.dmg AhaKey-Community-macOS12-Intel-20261026.zip > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AhaKey-Community-macOS12-Intel-20261026
+          path: deliverables/*
+          if-no-files-found: error

@@ -125,7 +125,7 @@ public final class VibeBarController {
     private func scheduleCompactIfIdle() {
         guard pendingCompactTask == nil else { return }
         pendingCompactTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(450))
+            try? await Task.sleep(nanoseconds: 450_000_000)
             guard !Task.isCancelled else { return }
             self?.pendingCompactTask = nil
             self?.compactIfIdle()
