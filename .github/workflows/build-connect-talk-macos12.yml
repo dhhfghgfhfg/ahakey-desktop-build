@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     timeout-minutes: 60
     env:
       MACOSX_DEPLOYMENT_TARGET: '12.0'
@@ -84,9 +84,11 @@ jobs:
           /// Duration used by code that must run on macOS 12.
           public struct CompatDuration: Sendable, Equatable {
               public let timeInterval: TimeInterval
+              public static let zero = Self(timeInterval: 0)
               public static func seconds(_ value: Double) -> Self { Self(timeInterval: value) }
               public static func milliseconds(_ value: Double) -> Self { Self(timeInterval: value / 1_000) }
               public var nanoseconds: UInt64 { UInt64(max(0, timeInterval) * 1_000_000_000) }
+              public static func += (lhs: inout Self, rhs: Self) { lhs = Self(timeInterval: lhs.timeInterval + rhs.timeInterval) }
           }
           """.lstrip())
           replacements = {
@@ -123,6 +125,65 @@ jobs:
                   assert old in data, (filename, old)
                   data = data.replace(old, new)
               path.write_text(data)
+          more = {
+            "Utilities/AhaKeyFirmwareFlasher.swift": [
+              ("ContinuousClock.now.advanced(by: .seconds(deviceWaitTimeout))", "ProcessInfo.processInfo.systemUptime + deviceWaitTimeout"),
+              ("ContinuousClock.now < deadline", "ProcessInfo.processInfo.systemUptime < deadline"),
+            ],
+            "Utilities/StudioInspectorSession.swift": [
+              ("timeout: Duration", "timeout: CompatDuration"),
+              ("ContinuousClock.now.advanced(by: timeout)", "ProcessInfo.processInfo.systemUptime + timeout.timeInterval"),
+              ("ContinuousClock.now < deadline", "ProcessInfo.processInfo.systemUptime < deadline"),
+            ],
+            "Utilities/StudioLCDInspectorModel.swift": [
+              ("Task.sleep(for: .milliseconds(500))", "Task.sleep(nanoseconds: 500_000_000)"),
+            ],
+            "Utilities/StudioLegacyComponentWriter.swift": [
+              ("Task.sleep(for: .milliseconds(50))", "Task.sleep(nanoseconds: 50_000_000)"),
+            ],
+            "Utilities/StudioInspectorSession+Device.swift": [
+              ("Task.sleep(for: .milliseconds(100))", "Task.sleep(nanoseconds: 100_000_000)"),
+            ],
+            "Utilities/StudioLiveTaskSource.swift": [
+              ("Task.sleep(for: .milliseconds(50))", "Task.sleep(nanoseconds: 50_000_000)"),
+            ],
+            "Utilities/StudioPresentationController.swift": [
+              ("Task.sleep(for: .seconds(display.remaining))", "Task.sleep(nanoseconds: UInt64(max(0, display.remaining) * 1_000_000_000))"),
+            ],
+            "Utilities/TerminalForegroundSource.swift": [
+              ("Task.sleep(for: .milliseconds(100))", "Task.sleep(nanoseconds: 100_000_000)"),
+            ],
+            "Views/AhaKeyStudioView.swift": [
+              ("Task.sleep(for: .seconds(1))", "Task.sleep(nanoseconds: 1_000_000_000)"),
+              ("Grid(alignment: .topLeading, horizontalSpacing: 10, verticalSpacing: 10) {", "VStack(alignment: .leading, spacing: 10) {"),
+              ("GridRow(alignment: .top) {", "HStack(alignment: .top, spacing: 10) {"),
+              ("Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])", "Color.clear.frame(maxWidth: .infinity)"),
+            ],
+            "Views/WS3LightCatalogView.swift": [
+              ("Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {", "VStack(alignment: .leading, spacing: 8) {"),
+              ("GridRow {", "HStack(spacing: 10) {"),
+            ],
+            "Views/StudioLeverPositionEditor.swift": [
+              ("ViewThatFits(in: .horizontal) {\n                choiceRow(Choice.allCases)", "VStack(alignment: .leading, spacing: 8) {"),
+            ],
+            "Views/DeviceInfoView.swift": [
+              ("        .formStyle(.grouped)\n", ""),
+            ],
+          }
+          root = Path("ahakeyconfig-mac/Sources")
+          for filename, changes in more.items():
+              path = root / filename
+              data = path.read_text()
+              for old, new in changes:
+                  assert old in data, (filename, old)
+                  data = data.replace(old, new)
+              path.write_text(data)
+          tests = Path("ahakeyconfig-mac/Tests/AhaKeyConfigSharedTests/WS3MultitaskLightPreviewTests.swift")
+          data = tests.read_text()
+          assert "duration: Duration = .zero" in data
+          data = data.replace("duration: Duration = .zero", "duration: CompatDuration = .zero")
+          data = data.replace("Task.sleep(for: .seconds(100))", "Task.sleep(nanoseconds: 100_000_000_000)")
+          tests.write_text(data)
           PY
       - name: Test app and VibeBar
         shell: bash
