@@ -1,0 +1,71 @@
+name: Build connect-talk macOS 12 Intel test package
+
+on:
+  push:
+    branches:
+      - codex/connect-talk-macos12-20261117
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '12.0'
+    steps:
+      - name: Check out requested source branch
+        uses: actions/checkout@v4
+        with:
+          repository: AhakeyAI/desktop
+          ref: 8a42faed63e059b33bc71116cae47fb16de240f3
+          fetch-depth: 0
+      - name: Apply the prior macOS 12 compatibility changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Codex compatibility build'
+          git config user.email 'codex-compat@example.invalid'
+          git fetch https://github.com/dhhfghgfhfg/ahakey-desktop-build.git 56efe65b3713518ef69421673e919a720e3a3649
+          git merge --no-commit --no-ff FETCH_HEAD
+          git status --short
+      - name: Test app and VibeBar
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd ahakeyconfig-mac && swift test --skip-update)
+          (cd vibebar && swift test --skip-update)
+      - name: Build Intel app
+        working-directory: ahakeyconfig-mac
+        env:
+          APP_BUNDLE_NAME: AhaKey Studio Connect Talk
+          APP_DISPLAY_NAME: AhaKey Studio Connect Talk
+          MACOS_DEPLOYMENT_TARGET: '12.0'
+          BUILD_ARCHS: x86_64
+          INSTALL_TO_APPLICATIONS: '0'
+          REQUIRE_DEVELOPER_ID: '0'
+        run: zsh scripts/build.sh
+      - name: Audit and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deliverables
+          app='ahakeyconfig-mac/dist/AhaKey Studio Connect Talk.app'
+          python3 build-support/macos12/audit_macho.py "$app" deliverables/macos12-binary-audit.json
+          codesign --verify --deep --strict --verbose=2 "$app"
+          mkdir -p "$RUNNER_TEMP/connect-talk-macos12"
+          ditto "$app" "$RUNNER_TEMP/connect-talk-macos12/AhaKey Studio Connect Talk.app"
+          ln -s /Applications "$RUNNER_TEMP/connect-talk-macos12/Applications"
+          hdiutil create -volname 'AhaKey Connect Talk macOS12 Intel' -srcfolder "$RUNNER_TEMP/connect-talk-macos12" -ov -format UDZO deliverables/AhaKey-Connect-Talk-macOS12-Intel-test.dmg
+          hdiutil verify deliverables/AhaKey-Connect-Talk-macOS12-Intel-test.dmg
+          ditto -c -k --sequesterRsrc --keepParent "$app" deliverables/AhaKey-Connect-Talk-macOS12-Intel-test.zip
+          shasum -a 256 deliverables/*.dmg deliverables/*.zip > deliverables/SHA256SUMS
+          printf '%s\n' 'Source: AhakeyAI/desktop connect&talk 8a42faed63e059b33bc71116cae47fb16de240f3' 'Compatibility base: 56efe65b3713518ef69421673e919a720e3a3649' 'Target: Intel macOS 12.7.6' 'Signing: ad-hoc, not notarized' 'Real macOS 12.7.6 runtime: not tested' > deliverables/README.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AhaKey-Connect-Talk-macOS12-Intel-test
+          path: deliverables/*
+          if-no-files-found: ignore
+
