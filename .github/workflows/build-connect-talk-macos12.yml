@@ -71,6 +71,59 @@ jobs:
             test -z "$(git diff --name-only --diff-filter=U)"
           fi
           git status --short
+      - name: Adapt newer timing APIs for macOS 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          base = Path("ahakeyconfig-mac/Sources/Shared")
+          (base / "CompatDuration.swift").write_text("""
+          import Foundation
+
+          /// Duration used by code that must run on macOS 12.
+          public struct CompatDuration: Sendable, Equatable {
+              public let timeInterval: TimeInterval
+              public static func seconds(_ value: Double) -> Self { Self(timeInterval: value) }
+              public static func milliseconds(_ value: Double) -> Self { Self(timeInterval: value / 1_000) }
+              public var nanoseconds: UInt64 { UInt64(max(0, timeInterval) * 1_000_000_000) }
+          }
+          """.lstrip())
+          replacements = {
+            "ApprovalRevocationFeedback.swift": [
+              ("timeout: Duration = .seconds(8)", "timeout: CompatDuration = .seconds(8)"),
+              ("Task.sleep(for: .milliseconds(250))", "Task.sleep(nanoseconds: 250_000_000)"),
+              ("ContinuousClock.now.advanced(by: timeout)", "ProcessInfo.processInfo.systemUptime + timeout.timeInterval"),
+              ("ContinuousClock.now < deadline", "ProcessInfo.processInfo.systemUptime < deadline"),
+            ],
+            "KimiDesktopLeverCoordinator.swift": [
+              ("timeout: Duration = .seconds(5)", "timeout: CompatDuration = .seconds(5)"),
+              ("Task.sleep(for: timeout)", "Task.sleep(nanoseconds: timeout.nanoseconds)"),
+            ],
+            "RestoreChannelAdmission.swift": [
+              ("timeout: Duration = .seconds(5)", "timeout: CompatDuration = .seconds(5)"),
+              ("Task.sleep(for: .milliseconds(50))", "Task.sleep(nanoseconds: 50_000_000)"),
+              ("ContinuousClock.now.advanced(by: timeout)", "ProcessInfo.processInfo.systemUptime + timeout.timeInterval"),
+              ("ContinuousClock.now < deadline", "ProcessInfo.processInfo.systemUptime < deadline"),
+            ],
+            "WS3MultitaskLightPreview.swift": [
+              ("(Duration) async throws -> Void", "(CompatDuration) async throws -> Void"),
+              ("Task.sleep(for: $0)", "Task.sleep(nanoseconds: $0.nanoseconds)"),
+            ],
+            "KimiDesktopPermissionBridge.swift": [
+              ("ContinuousClock.now.advanced(by: .seconds(5))", "ProcessInfo.processInfo.systemUptime + 5"),
+              ("ContinuousClock.now < deadline", "ProcessInfo.processInfo.systemUptime < deadline"),
+              ("Task.sleep(for: .seconds(5))", "Task.sleep(nanoseconds: 5_000_000_000)"),
+            ],
+          }
+          for filename, changes in replacements.items():
+              path = base / filename
+              data = path.read_text()
+              for old, new in changes:
+                  assert old in data, (filename, old)
+                  data = data.replace(old, new)
+              path.write_text(data)
+          PY
       - name: Test app and VibeBar
         shell: bash
         run: |
