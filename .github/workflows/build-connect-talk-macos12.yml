@@ -28,7 +28,48 @@ jobs:
           git config user.name 'Codex compatibility build'
           git config user.email 'codex-compat@example.invalid'
           git fetch https://github.com/dhhfghgfhfg/ahakey-desktop-build.git 56efe65b3713518ef69421673e919a720e3a3649
-          git merge --no-commit --no-ff FETCH_HEAD
+          if ! git merge --no-commit --no-ff FETCH_HEAD; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            if [[ "$conflicts" != 'ahakeyconfig-mac/Sources/AhaKeyConfigApp.swift' ]]; then
+              printf 'Unexpected merge conflicts:\n%s\n' "$conflicts"
+              exit 1
+            fi
+            git show :2:ahakeyconfig-mac/Sources/AhaKeyConfigApp.swift > ahakeyconfig-mac/Sources/AhaKeyConfigApp.swift
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path("ahakeyconfig-mac/Sources/AhaKeyConfigApp.swift")
+          source = path.read_text()
+          anchor = "final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {\n"
+          addition = """    private var legacyStatusItem: NSStatusItem?
+
+              private func installLegacyStatusMenuIfNeeded() {
+                  if #available(macOS 13.0, *) { return }
+                  let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+                  item.button?.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "AhaKey")
+                  let menu = NSMenu()
+                  let openItem = menu.addItem(withTitle: NSLocalizedString("打开主窗口", comment: ""), action: #selector(reopenMainWindow), keyEquivalent: "")
+                  openItem.target = self
+                  menu.addItem(.separator())
+                  let quitItem = menu.addItem(withTitle: NSLocalizedString("退出 AhaKey Studio", comment: ""), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+                  quitItem.target = NSApp
+                  item.menu = menu
+                  legacyStatusItem = item
+              }
+
+          """
+          assert source.count(anchor) == 1
+          source = source.replace(anchor, anchor + addition)
+          anchor = "        UNUserNotificationCenter.current().delegate = self"
+          assert source.count(anchor) == 1
+          source = source.replace(anchor, "        installLegacyStatusMenuIfNeeded()\n" + anchor)
+          anchor = "    func reopenMainWindow() {"
+          assert source.count(anchor) == 1
+          source = source.replace(anchor, "    @objc func reopenMainWindow() {")
+          path.write_text(source)
+          PY
+            git add ahakeyconfig-mac/Sources/AhaKeyConfigApp.swift
+            test -z "$(git diff --name-only --diff-filter=U)"
+          fi
           git status --short
       - name: Test app and VibeBar
         shell: bash
