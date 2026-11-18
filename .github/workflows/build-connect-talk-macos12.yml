@@ -131,6 +131,7 @@ jobs:
               ("ContinuousClock.now < deadline", "ProcessInfo.processInfo.systemUptime < deadline"),
             ],
             "Utilities/StudioInspectorSession.swift": [
+              ("import Foundation\n", "import Foundation\nimport AhaKeyConfigShared\n"),
               ("timeout: Duration", "timeout: CompatDuration"),
               ("ContinuousClock.now.advanced(by: timeout)", "ProcessInfo.processInfo.systemUptime + timeout.timeInterval"),
               ("ContinuousClock.now < deadline", "ProcessInfo.processInfo.systemUptime < deadline"),
