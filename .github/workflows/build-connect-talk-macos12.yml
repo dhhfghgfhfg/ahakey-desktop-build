@@ -195,6 +195,7 @@ jobs:
       - name: Build Intel app
         working-directory: ahakeyconfig-mac
         env:
+          APP_VERSION: 0.2.3
           APP_BUNDLE_NAME: AhaKey Studio Connect Talk
           APP_DISPLAY_NAME: AhaKey Studio Connect Talk
           MACOS_DEPLOYMENT_TARGET: '12.0'
